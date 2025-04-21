@@ -1,0 +1,198 @@
+version: "3"
+
+env:
+  ### AWS Variables
+  AWS_ROLE_ID: "AWS-CloudChapsRole"
+  AWS_USER_GROUP: "AWS-CloudChapsGroup"
+  AWS_USER: "AWS-CloudChapsUser"
+  AWS_USER_TWO: "AWS-CloudChapsUserTwo"
+  AWS_POLICY_USR_NM: "AWS-UserPolicy"
+  AWS_POLICY_GRP_NM: "AWS-GroupPolicy"
+  AWS_POLICY_RLE_NM: "AWS-RolePolicy"
+  
+  ### AZURE Variables
+  AZURE_ROLE_ID: "Azure-CloudChapsRole"   ### To add custom roles in Azure P1 or P2 Microsoft Entra is needed
+  AZURE_USER_GROUP: "Azure-CloudChapsGroup"
+  AZURE_USER: "Azure-CloudChapsUser"
+  AZURE_USER_TWO: "Azure-CloudChapsUserTwo"
+  AZURE_USER_ROLE: "Contributor"
+  AZURE_USER_TWO_ROLE: "Role Based Access Control Administrator"
+  AZURE_GROUP_ROLE: "User Access Administrator"
+  AZURE_SUBSCRIPTION_ID: "YOURSUBSCRIPTION"
+  AZURE_DOMAIN: "YOURDOMAIN.onmicrosoft.com"
+  AZURE_TEMP_PSW: "Temps12345"
+  AZURE_SVC_NM: "Azure-CloudChapsServicePrincipal"
+    
+  ### GCLOUD Variables
+  GCLOUD_PROJECT_ID: "YOURPROJECT"
+  GCLOUD_SVC_ADMIN: "gcp-serviceadmin"
+  GCLOUD_SVC_ACCOUNT: "cloudchaps-svc-computeadmin"
+  GCLOUD_SVC_ACCOUNT_DESC: "This service account is used to create and destroy virtual machines in the compute API"
+  GCLOUD_SVC_ACCOUNT_TWO: "cloudchaps-svc-databaseadmin"
+  GCLOUD_SVC_ACCOUNT_TWO_DESC: "This service account is used to create and delete SQL instances"
+  GCLOUD_SVC_ACCOUNT_KEY: "gcloud-compute-svc-key.json"
+
+tasks:
+####### GENERATE AWS USER AND ROLE #######
+  AWS:01-create-AWS-user:
+    desc: Create a user to make changes in IAM Service AWS cloud from local desktop
+    cmds: 
+      - cmd: |
+          gum style "$(cat <<EOF
+          This task perform the following steps in AWS cloud. Before running it you need to set up access keys with IAM policies:
+          Requirements:
+          1. 👤 Create a user in the AWS Console 🌐 with the IAMFullAccess Policy attach and add the credentials to ~/.aws/credentials 🖥️
+          ---
+          1. Create a role and attach a rule policy described in aws-role-policy.json file
+          2. Create a group and attach a rule policy described in aws-group-policy.json file
+          3. Create two users and attach a same rule policy described in aws-user-policy.json file which grants EC2 Full access
+          3. Create Access key for user recently created for future use if required
+          4. Add user to group recently created to show policy is override to whatever policy is attached in the group
+
+          🚨🚨🚨 NOTE: Exposing such credentials or store them in any control version system platform is extremly risky and can lead to potential 
+          monetary charges in your cloud platform due to the credentials being used for any kind of tasks in your account.
+          (Make sure you run the task AWS:03-delete-aws-resources to delete all the resources in this task list after you finish using it.) 🚨🚨🚨
+          EOF
+          )"
+        silent: true
+      - aws iam create-role --role-name ${AWS_ROLE_ID} --assume-role-policy-document file://./aws-trust-policy.json >> ~/tmp/awslogs
+      - aws iam put-role-policy --role-name ${AWS_ROLE_ID} --policy-name ${AWS_POLICY_GRP_NM} --policy-document file://./aws-role-policy-cli.json >> ~/tmp/awslogs
+      - aws iam create-group --group-name ${AWS_USER_GROUP} >> ~/tmp/awslogs
+      - aws iam put-group-policy --group-name ${AWS_USER_GROUP} --policy-name ${AWS_POLICY_GRP_NM} --policy-document file://./aws-group-policy.json >> ~/tmp/awslogs
+      - aws iam create-user --user-name ${AWS_USER} >> ~/tmp/awslogs
+      - aws iam create-user --user-name ${AWS_USER_TWO} >> ~/tmp/awslogs
+      - aws iam put-user-policy --user-name ${AWS_USER} --policy-name ${AWS_POLICY_USR_NM} --policy-document file://./aws-user-policy.json >> ~/tmp/awslogs
+      - aws iam put-user-policy --user-name ${AWS_USER_TWO} --policy-name ${AWS_POLICY_USR_NM} --policy-document file://./aws-user-policy.json >> ~/tmp/awslogs
+      - aws iam create-access-key --user-name ${AWS_USER} > aws-access-key.json
+      - aws iam add-user-to-group --user-name ${AWS_USER} --group-name ${AWS_USER_GROUP} >> ~/tmp/awslogs
+
+  AWS:02-run-terraform-fmt-check:
+    desc: Check terraform config files format
+    cmds:
+      - cd ./01-terraform-files-AWS
+      - terraform init
+      - terraform fmt
+      - terraform validate
+      - cd ..
+  
+  AWS:03-delete-aws-resources:
+    desc: delete AWS resources
+    cmds:
+      - aws iam delete-role-policy --role-name ${AWS_ROLE_ID} --policy-name ${AWS_POLICY_GRP_NM} 
+      - aws iam delete-group-policy --group-name ${AWS_USER_GROUP} --policy-name ${AWS_POLICY_GRP_NM}
+      - aws iam delete-user-policy --user-name ${AWS_USER} --policy-name ${AWS_POLICY_USR_NM}
+      - aws iam delete-role --role-name ${AWS_ROLE_ID}
+      - aws iam delete-access-key --user-name ${AWS_USER} --access-key-id $(jq -r '.AccessKey.AccessKeyId' aws-access-key.json)
+      - aws iam remove-user-from-group --user-name ${AWS_USER} --group-name ${AWS_USER_GROUP}
+      - aws iam delete-user --user-name ${AWS_USER}
+      - aws iam delete-user-policy --user-name ${AWS_USER_TWO} --policy-name ${AWS_POLICY_USR_NM}
+      - aws iam delete-user --user-name ${AWS_USER_TWO}
+      - aws iam delete-group --group-name ${AWS_USER_GROUP}
+      - rm -rf aws-access-key.json
+
+####### GENERATE AZURE USER, ROLE AND SERVICE PRINCIPAL #######
+  Azure:01-create-Azure-user:
+    desc: Create a user to make changes in cloud from local desktop
+    cmds: 
+      - cmd: |
+          gum style "$(cat <<EOF
+          This task perform the following steps in Azure cloud. First create a user and login using it's credentials do not use it in root:
+          Requirements:
+          1. 🖥️ Login to Azure Portal using your account with active subscription ⚠️⚠️⚠️
+          ---
+          1. Run this task, A browser will open to authenticate **** USE NON ROOT USER FOR SECURITY
+          2. Once authenticated youll be notified success or failure in the terminal 
+          3. Press enter and select the subscription ID to interact with the subscription
+          4. Create two users within the domain and it's own password
+          5. Create a group and add the users created in previous step to it
+          6. Assign users and groups in the subscription with it's own role each
+
+          🚨🚨🚨 NOTE: Exposing such credentials or store them in any control version system platform is extremly risky and can lead to potential 
+          monetary charges in your cloud platform due to the credentials being used for any kind of tasks in your subscripcion.
+          (Make sure you run the task Azure:03-delete-aws-resources to delete all the resources in this lesson after you finish using it.) 🚨🚨🚨
+          EOF
+          )"
+        silent: true
+      - az login
+      - az ad sp create-for-rbac --name ${AZURE_SVC_NM} --role contributor --scopes /subscriptions/${AZURE_SUBSCRIPTION_ID} --sdk-auth > servicePrincipal.json
+      - ./02-scripts/01-add_azure_creds.sh
+      - az role assignment create --assignee $(jq -r '.clientId' servicePrincipal.json) --role "Role Based Access Control Administrator" --scope /subscriptions/${AZURE_SUBSCRIPTION_ID} 
+      - az ad user create --display-name ${AZURE_USER} --password ${AZURE_TEMP_PSW} --user-principal-name ${AZURE_USER}@${AZURE_DOMAIN}.onmicrosoft.com >> ~/tmp/azurelogs
+      - az ad user create --display-name ${AZURE_USER_TWO} --password ${AZURE_TEMP_PSW} --user-principal-name ${AZURE_USER_TWO}@${AZURE_DOMAIN}.onmicrosoft.com >> ~/tmp/azurelogs
+      - az ad group create --display-name ${AZURE_USER_GROUP} --mail-nickname ${AZURE_USER_GROUP} --description "Azure Cloud Chaps Group" >> ~/tmp/azurelogs
+      - az ad user show --id ${AZURE_USER}@${AZURE_DOMAIN}.onmicrosoft.com > azure-user1-details.json
+      - az ad user show --id ${AZURE_USER_TWO}@${AZURE_DOMAIN}.onmicrosoft.com > azure-user2-details.json
+      - az ad group show --group ${AZURE_USER_GROUP} > azure-group-details.json
+      - sleep 5
+      - az ad group member add --group ${AZURE_USER_GROUP} --member-id $(jq -r '.id' azure-user1-details.json) >> ~/tmp/azurelogs
+      - az ad group member add --group ${AZURE_USER_GROUP} --member-id $(jq -r '.id' azure-user2-details.json) >> ~/tmp/azurelogs
+      - az role assignment create --assignee $(jq -r '.id' azure-user1-details.json) --role "${AZURE_USER_ROLE}" --scope /subscriptions/${AZURE_SUBSCRIPTION_ID} >> ~/tmp/azurelogs
+      - az role assignment create --assignee $(jq -r '.id' azure-user2-details.json) --role "${AZURE_USER_TWO_ROLE}" --scope /subscriptions/${AZURE_SUBSCRIPTION_ID} >> ~/tmp/azurelogs
+      - az role assignment create --assignee $(jq -r '.id' azure-group-details.json) --role "${AZURE_GROUP_ROLE}" --scope /subscriptions/${AZURE_SUBSCRIPTION_ID} >> ~/tmp/azurelogs
+
+  Azure:02-delete-terraform-resources:
+    desc: delete terraform resources
+    cmds:
+      - cd ./01-terraform-files-AWS
+      - terraform destroy
+      - cd ..
+
+  Azure:03-delete-aws-resources:
+    desc: delete AWS resources
+    cmds:
+      - az ad user delete --id ${AZURE_USER}@${AZURE_DOMAIN}.onmicrosoft.com
+      - az ad user delete --id ${AZURE_USER_TWO}@${AZURE_DOMAIN}.onmicrosoft.com
+      - az ad group delete --group ${AZURE_USER_GROUP}
+      - az ad sp list --display-name ${AZURE_SVC_NM} > sp.json
+      - az ad sp delete --id $(jq -r '.[0].id' sp.json)
+      - rm -f azure-user1-details.json azure-user2-details.json sp.json azure-group-details.json servicePrincipal.json
+
+####### GENERATE GCLOUD USER AND SERVICE ACCOUNT #######
+  GCLOUD:01-create-Gcloud-user:
+    desc: Create a user to make changes in cloud from local desktop
+    cmds: 
+      - cmd: |
+          gum style "$(cat <<EOF
+          This task perform the following steps in Google cloud. First create a user and login using it's credentials do not use it in root:
+          Requirements:
+          1. 🖥️ Login to GCP Portal using your account with active project ⚠️⚠️⚠️
+          ---
+          1. Run this task, A browser will open to authenticate **** USE NON ROOT USER FOR SECURITY
+          2. Once authenticated youll be notified success or failure in the terminal 
+          3. Press enter and Service will be created, you can check it's details in Azure portal Console go to Google cloud console click on IAM
+
+          🚨🚨🚨 NOTE: Exposing such credentials or store them in any control version system platform is extremly risky and can lead to potential 
+          monetary charges in your cloud platform due to the credentials being used for any kind of tasks in your subscripcion.
+          (Make sure you run the task AWS:delete to delete all the resources in this lesson after you finish using it.) 🚨🚨🚨
+          EOF
+          )"
+        silent: true
+      - gcloud auth login
+      - gcloud config set project ${GCLOUD_PROJECT_ID} >> ~/tmp/gcloudlogs.md
+      - gcloud iam service-accounts create "${GCLOUD_SVC_ACCOUNT}" --display-name="${GCLOUD_SVC_ACCOUNT}" --description="${GCLOUD_SVC_ACCOUNT_DESC} in ${GCLOUD_PROJECT_ID}" --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - gcloud iam service-accounts create "${GCLOUD_SVC_ACCOUNT_TWO}" --display-name="${GCLOUD_SVC_ACCOUNT_TWO}" --description="${GCLOUD_SVC_ACCOUNT_TWO_DESC} in ${GCLOUD_PROJECT_ID}" --impersonate-service-account ${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - sleep 5
+      - gcloud projects add-iam-policy-binding ${GCLOUD_PROJECT_ID} --member=serviceAccount:${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --role=roles/compute.admin --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - gcloud projects add-iam-policy-binding ${GCLOUD_PROJECT_ID} --member=serviceAccount:${GCLOUD_SVC_ACCOUNT_TWO}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --role=roles/cloudsql.admin --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - sleep 5
+      - gcloud projects add-iam-policy-binding ${GCLOUD_PROJECT_ID} --member=serviceAccount:${GCLOUD_SVC_ACCOUNT_TWO}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --role=roles/cloudsql.admin --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - gcloud iam service-accounts keys create ${GCLOUD_SVC_ACCOUNT_KEY} --iam-account=${GCLOUD_SVC_ACCOUNT_TWO}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - gcloud auth activate-service-account ${GCLOUD_SVC_ACCOUNT_TWO}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --key-file=${GCLOUD_SVC_ACCOUNT_KEY} >> ~/tmp/gcloudlogs.md 
+      - gcloud auth list
+
+  GCLOUD:02-run-terrafom-apply:
+    desc: Run terraform apply
+    cmds:
+      - cd ./01-terraform-files-AWS
+      - terraform apply
+      - cd ..
+
+  GCLOUD:03-delete-GCP-resources:
+    desc: delete GCP Cloud resources
+    cmds:
+      - gcloud auth login
+      - gcloud iam service-accounts delete ${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - gcloud iam service-accounts delete ${GCLOUD_SVC_ACCOUNT_TWO}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - gcloud auth revoke ${GCLOUD_SVC_ACCOUNT_TWO}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - rm -rf ${GCLOUD_SVC_ACCOUNT_KEY}
+      - gcloud auth list
