@@ -236,17 +236,16 @@ tasks:
           1. Run all previous tasks in this lesson to create the resources in cloud before running this task 📋
           2. Do not run delete tasks in previous lessons, it will delete the resources needed in this task 🚨
           ----
-          1. Authorization Login 🔐
-            - Opens a browser to authenticate your Google account. This allows the CLI to make authenticated 
-              requests on your behalf.
-          2. Set Default Project 🎯
-            - This sets the project where all your following actions will take place
-          3. Create a Service Account & Grant Access 👤🔑
-            - This lets your user act as the service account when needed — super useful for automation and scoped access
-          4. Grant Storage Admin Role to Service Account 🗂️🔐
-            - This gives the service account full control over Cloud Storage (GCS) 
-          5. Create Two GCS Buckets with Versioning & Lifecycle Policy 🪣🕓
-          6. Copy Files from Local Directory to GCS 📁🚀
+          1. 📦 Create Archives
+            - Tar (compress) the local Terraform modules for each cloud setup (AWS, Azure, GCP) into .tar files.
+          2. 🚀 Upload to Cloud Storage
+            - Copy (cp) the .tar files to the corresponding cloud service storage (like S3 for AWS, Blob Storage for Azure, GCS for GCP).
+          3. 🧹 Clean Local Workspace
+            - Remove the original local Terraform module folders to free up space and keep the workspace tidy.
+          4. 📥 Download Modules Again
+            - Copy (cp) the modules from the cloud storage service back to the local repository — now centralized and retrieved from cloud sources.
+          5. 🗑️ Final Cleanup
+            - Delete the .tar archive files that are no longer needed after extraction to avoid clutter.
 
           🚨🚨🚨 NOTE: Exposing such credentials or store them in any control version system platform is extremly risky and can lead to potential 
           monetary charges in your cloud platform due to the credentials being used for any kind of tasks in your subscripcion.
