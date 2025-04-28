@@ -1,0 +1,31 @@
+{
+    "Rules": [
+      {
+        "ID": "MoveToIA",
+        "Prefix": "aws-cloudchaps-lyfecyclerule",
+        "Status": "Enabled",
+        "Transition": {
+          "Days": 31,
+          "StorageClass": "STANDARD_IA"
+        }
+      },
+      {
+        "ID": "MoveToGlacier",
+        "Prefix": "aws-cloudchaps-lyfecyclerule2",
+        "Status": "Enabled",
+        "Transition": {
+          "Days": 61,
+          "StorageClass": "GLACIER"
+        }
+      },
+      {
+        "ID": "ExpireAfter30Days",
+        "Prefix": "aws-cloudchaps-lyfecyclerule3",
+        "Status": "Enabled",
+        "Expiration": {
+          "Days": 152
+        }
+      }
+    ]
+  }
+  

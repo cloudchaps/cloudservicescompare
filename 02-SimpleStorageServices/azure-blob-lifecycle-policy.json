@@ -1,0 +1,28 @@
+{
+    "rules": [
+      {
+        "enabled": true,
+        "name": "move-to-cool-delete-after-year",
+        "type": "Lifecycle",
+        "definition": {
+          "filters": {
+            "blobTypes": ["blockBlob"]
+          },
+          "actions": {
+            "baseBlob": {
+              "tierToCool": {
+                "daysAfterModificationGreaterThan": 30
+              },
+              "tierToArchive": {
+                "daysAfterModificationGreaterThan": 90
+            },
+              "delete": {
+                "daysAfterModificationGreaterThan": 365
+              }
+            }
+          }
+        }
+      }
+    ]
+  }
+  

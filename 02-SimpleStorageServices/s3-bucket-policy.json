@@ -1,0 +1,34 @@
+{
+   "Version": "2012-10-17",
+   "Statement": [
+     {
+       "Sid": "DenySecretFolderAccess",
+       "Effect": "Deny",
+       "Principal": {
+         "AWS": [
+           "arn:aws:iam::084828572941:user/AWS-TerraformAdmin"
+         ]
+       },
+       "Action": "s3:*",
+       "Resource": [
+         "arn:aws:s3:::aws-cloudchaps-terraform-modules/secret",
+         "arn:aws:s3:::aws-cloudchaps-terraform-modules/secret/*"
+       ]
+     },
+     {
+       "Sid": "AllowAllOtherAccess",
+       "Effect": "Allow",
+       "Principal": {
+         "AWS": [
+           "arn:aws:iam::084828572941:user/AWS-TerraformAdmin"
+         ]
+       },
+       "Action": "s3:*",
+       "Resource": [
+         "arn:aws:s3:::aws-cloudchaps-terraform-modules",
+         "arn:aws:s3:::aws-cloudchaps-terraform-modules/*"
+       ]
+     }
+   ]
+ }
+ 

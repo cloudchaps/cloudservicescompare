@@ -1,0 +1,25 @@
+{
+  "Rules": [
+    {
+      "ID": "TransitionAndExpireObjects",
+      "Prefix": "aws-cloudchaps-lyfecyclerule",
+      "Status": "Enabled",
+      "Transition": {
+        "Days": 31,
+        "StorageClass": "STANDARD_IA"
+      },
+      "Expiration": {
+        "Days": 152
+      }
+    },
+    {
+      "ID": "TransitionToGlacier",
+      "Prefix": "aws-cloudchaps-lyfecycleruletwo",
+      "Status": "Enabled",
+      "Transition": {
+        "Days": 61,
+        "StorageClass": "GLACIER"
+      }
+    }
+  ]
+}
