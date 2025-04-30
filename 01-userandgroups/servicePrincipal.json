@@ -1,6 +1,6 @@
 {
-  "clientId": "d1b77861-4be5-4df9-bb73-a5abfdd142ee",
-  "clientSecret": "RAB8Q~-9DLk.8QmvqO6_hofgNRQUU~PV4~D1Zdo.",
-  "subscriptionId": "b4e4597c-2535-40c8-b0f3-2dc02047eeeb",
-  "tenantId": "b40609e9-ba21-4e81-9919-6b1379a1a8df"
+  "clientId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "clientSecret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "subscriptionId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+  "tenantId": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 }
