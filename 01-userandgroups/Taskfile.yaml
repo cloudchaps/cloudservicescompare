@@ -129,7 +129,7 @@ tasks:
           EOF
           )"
         silent: true
-      - az login --service-principal -u $(jq -r '.clientId' servicePrincipal.json) -p $(jq -r '.clientS' servicePrincipal.json) --tenant $(jq -r '.tenantId' servicePrincipal.json)
+      - az login --service-principal -u $(jq -r '.Id' Azure-service.json) -p $(jq -r '.SS' Azure-service.json) --tenant $(jq -r '.tenantId' Azure-service.json)
       - az ad user create --display-name ${AZURE_USER} --password ${AZURE_TEMP_PSW} --user-principal-name ${AZURE_USER}@${AZURE_DOMAIN} >> ~/tmp/azurelogs
       - az ad user create --display-name ${AZURE_USER_TWO} --password ${AZURE_TEMP_PSW} --user-principal-name ${AZURE_USER_TWO}@${AZURE_DOMAIN} >> ~/tmp/azurelogs
       - az ad group create --display-name ${AZURE_USER_GROUP} --mail-nickname ${AZURE_USER_GROUP} --description "Azure Cloud Chaps Group" >> ~/tmp/azurelogs
