@@ -11,7 +11,7 @@ env:
   ### AZURE Variables
   AZURE_USER: "Azure-CloudChapsUser"
   AZURE_USER_ROLE: "Contributor"
-  AZURE_SUBSCRIPTION_ID: "b4e4597c-2535-40c8-b0f3-2dc02047eeeb"
+  AZURE_SUBSCRIPTION_ID: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
   AZURE_SVC_NM: "Azure-CloudChapsServicePrincipal"
   AZURE_RESOURCE_GROUP: "Azure-CloudChaps-ResourceGroup"
   AZURE_RESOURCE_GROUP_LOCATION: "eastus"
@@ -28,7 +28,7 @@ env:
   GCLOUD_GCS_BUCKET_NM: "gcp-cc-tfstatefiles"
   GCLOUD_GCS_BUCKET_NM_TWO: "gcp-cc-terramodules"
   GCLOUD_GCS_BUCKET_REGION: "us-east1"
-  GCP_VIEWER_USER: "delarosasaucedodanielalberto@gmail.com"
+  GCP_VIEWER_USER: "xxxxxxxxxxxxxxxxxxxxxxxxxxxx@gmail.com"
 
 tasks:
 ####### GENERATE AWS S3 BUCKETS #######

@@ -1,0 +1,265 @@
+version: "3"
+
+env:
+  ### AWS Variables
+  AWS_S3_GENERAL_BUCKET_NM: "aws-cloudchaps-alarm-practice"
+  AWS_S3_BUCKET_REGION: "us-east-1"
+  
+  ### AZURE Variables
+  AZURE_SUBSCRIPTION_ID: "b4e4597c-2535-40c8-b0f3-2dc02047eeeb"
+  AZURE_SVC_NM: "Azure-CloudChapsServicePrincipal"
+  AZURE_RESOURCE_GROUP: "Azure-CloudChaps-ResourceGroup"
+  AZURE_RESOURCE_GROUP_LOCATION: "eastus"
+  AZURE_STORAGE_ACCOUNT: "cloudchapsstorageaccount"
+  AZURE_CONTAINER_NM: "ccterraformmodules"
+  AZURE_CONTAINER_NM_TWO: "cloudchapstfstatefiles"
+
+  ### GCLOUD Variables
+  GCLOUD_PROJECT_ID: "devopspracticeproject"
+  GCLOUD_SVC_ADMIN: "gcp-serviceadmin"
+  GCLOUD_SVC_ACCOUNT: "cloudchaps-svc-storageAdmin"
+  GCLOUD_SVC_ACCOUNT_DESC: "This service account is used to create, manage and delete storage services and buckets"
+  GCLOUD_SVC_ACCOUNT_KEY: "GCP-ServiceAccountkey.json"
+  GCLOUD_GCS_BUCKET_NM: "gcp-cc-tfstatefiles"
+  GCLOUD_GCS_BUCKET_NM_TWO: "gcp-cc-terramodules"
+  GCLOUD_GCS_BUCKET_REGION: "us-east1"
+  GCP_VIEWER_USER: "delarosasaucedodanielalberto@gmail.com"
+
+tasks:
+####### GENERATE AWS S3 BUCKETS #######
+  AWS:01-create-S3-bucket:
+    desc: Create two users with S3 bucket different policies and two different S3 buckets
+    cmds: 
+      - cmd: |
+          gum style "$(cat <<EOF
+          This task perform the following steps in AWS cloud. Before running it you need to set up access keys with IAM policies:
+          👤 1. Create IAM User and Attach Policy from JSON
+            - This creates a new IAM user and attaches an inline policy defined in a local JSON file. 
+              The policy defines specific permissions for S3 actions.
+          🪣 2. Create Two S3 Buckets
+            - These commands create two S3 buckets in the specified AWS region. Bucket names must be globally unique.
+          🔁 3. Enable Lifecycle Rules and Versioning
+            - Versioning enables multiple versions of an object (great for backups), while lifecycle 
+              configuration defines storage transitions (e.g., to Glacier) or automatic deletions.
+          📁 4. Upload Files to the S3 Buckets
+            - This copies all files from a local directory into the specified S3 bucket. 
+          🛡️ 5. Assign a Bucket Policy from JSON File
+            - This command assigns a bucket policy from a local JSON file to control access at the bucket level 
+            — such as denying access to a specific folder or enabling access to specific users/accounts.
+
+          🚨🚨🚨 NOTE: Exposing such credentials or store them in any control version system platform is extremly risky and can lead to potential 
+          monetary charges in your cloud platform due to the credentials being used for any kind of tasks in your account.
+          (Make sure you run the task AWS:03-delete-aws-resources to delete all the resources in this task list after you finish using it.) 🚨🚨🚨
+          EOF
+          )"
+        silent: true
+      - aws iam create-user --user-name ${AWS_USER} >> ~/tmp/awslogs
+      - aws iam put-user-policy --user-name ${AWS_USER} --policy-name ${AWS_POLICY_USR_NM} --policy-document file://./aws-user-policy.json >> ~/tmp/awslogs
+      - aws s3api create-bucket --bucket ${AWS_S3_GENERAL_BUCKET_NM} --region ${AWS_S3_BUCKET_REGION} --object-ownership BucketOwnerEnforced 
+      - aws s3api create-bucket --bucket ${AWS_S3_GENERAL_BUCKET_NM_TWO} --region ${AWS_S3_BUCKET_REGION}
+      - aws s3api put-bucket-lifecycle --bucket ${AWS_S3_GENERAL_BUCKET_NM} --lifecycle-configuration file://s3-lifecycle-policy.json
+      - aws s3api put-bucket-versioning --bucket ${AWS_S3_GENERAL_BUCKET_NM_TWO} --versioning-configuration=Status=Enabled,MFADelete=Disabled
+      - aws s3api put-bucket-lifecycle --bucket ${AWS_S3_GENERAL_BUCKET_NM_TWO} --lifecycle-configuration file://s3-lifecycle-policy-two.json
+      - aws s3 cp ./01-terraform/01-modules/01-AWS s3://${AWS_S3_GENERAL_BUCKET_NM}/01-AWS --recursive
+      - aws s3 cp ./01-terraform/02-environments/01-DEV s3://${AWS_S3_GENERAL_BUCKET_NM_TWO}/01-Terraform --recursive --exclude "*" --include "*.tfstate" --include "*lock.hcl"
+      - aws s3api put-bucket-policy --bucket ${AWS_S3_GENERAL_BUCKET_NM} --policy file://./s3-bucket-policy.json
+
+  AWS:02-run-terraform-fmt-check:
+    desc: Check terraform config files format
+    cmds:
+      - cd ./01-terraform-files-AWS
+      - terraform init
+      - terraform fmt
+      - terraform validate
+      - cd ..
+  
+  AWS:03-delete-S3-resources:
+    desc: delete AWS resources created in this lecture
+    cmds:
+      - aws iam delete-user-policy --user-name ${AWS_USER} --policy-name ${AWS_POLICY_USR_NM}
+      - aws iam delete-user --user-name ${AWS_USER}
+      - aws s3 rm s3://${AWS_S3_GENERAL_BUCKET_NM} --recursive
+      - aws s3 rb s3://${AWS_S3_GENERAL_BUCKET_NM} --force
+      - ./02-scripts/01-aws-delete-versions.sh ${AWS_S3_GENERAL_BUCKET_NM_TWO}
+      - aws s3 rb s3://${AWS_S3_GENERAL_BUCKET_NM_TWO} --force
+      - rm -f delete_markers.json delete.json final_delete.json
+
+####### GENERATE AZURE BLOB STORAGE#######
+  Azure:01-create-Azure-blob-storage:
+    desc: Create a blob storage container within a custom resource group
+    cmds: 
+      - cmd: |
+          gum style "$(cat <<EOF
+          🔐 1. Login to Azure
+            - This opens a browser window where you log in with your Azure credentials.
+          👤 2. Create a Service Principal with Contributor role
+            - This service principal will be used by Terraform to interact with your Azure resources.
+          🛠️ 3. Run a bash script that sets the service principal credentials 
+            - This allows automation without logging in every time.
+          🗂️ 3. Create a Resource Group
+            - This will serve as a logical container for your Azure resources.
+          💾 4. Create Two Storage Accounts and One Container in Each
+            - An Azure Storage Account is like a digital storage unit in the cloud — 
+              it holds all your data services in one place.
+            - Think of a container like a folder inside your storage account's Blob service. 
+              It’s where you store blobs (files).
+            - Blob = Binary Large Object (e.g., images, videos, documents, code artifacts)
+          🔑 5. Get Storage Account Keys
+            - You’ll need these to access and manage the storage accounts programmatically.
+          🕒 6. Enable Versioning and Assign Lifecycle Policies
+            - Versioning enables multiple versions of an object (great for backups), while lifecycle 
+              configuration defines storage transitions (e.g., to Glacier) or automatic deletions.
+          📤 7. Upload Terraform Modules and State File
+          5. Create a group and add the users created in previous step to it
+          6. Assign users and groups in the subscription with it's own role each
+
+          🚨🚨🚨 NOTE: Exposing such credentials or store them in any control version system platform is extremly risky and can lead to potential 
+          monetary charges in your cloud platform due to the credentials being used for any kind of tasks in your subscripcion.
+          (Make sure you run the task Azure:03-delete-aws-resources to delete all the resources in this lesson after you finish using it.) 🚨🚨🚨
+          EOF
+          )"
+        silent: true
+      - az login
+      - az ad sp create-for-rbac --name ${AZURE_SVC_NM} --role contributor --scopes /subscriptions/${AZURE_SUBSCRIPTION_ID} --sdk-auth > servicePrincipal.json
+      - ./02-scripts/02-add_azure_creds.sh
+      - sleep 60
+      - az login --service-principal -u $(jq -r '.clientId' servicePrincipal.json) -p $(jq -r '.clientSecret' servicePrincipal.json) --tenant $(jq -r '.tenantId' servicePrincipal.json)
+      - az group create --n ${AZURE_RESOURCE_GROUP} --location ${AZURE_RESOURCE_GROUP_LOCATION} > ~/tmp/azurelogs.md
+      - az storage account create --name ${AZURE_STORAGE_ACCOUNT} --resource-group ${AZURE_RESOURCE_GROUP} --location ${AZURE_RESOURCE_GROUP_LOCATION} --sku Standard_LRS --kind StorageV2 > ~/tmp/azurelogs.md
+      - az storage account blob-service-properties update --account-name ${AZURE_STORAGE_ACCOUNT} --resource-group ${AZURE_RESOURCE_GROUP} --enable-versioning true > ~/tmp/azurelogs.md
+      - az storage account management-policy create --account-name ${AZURE_STORAGE_ACCOUNT} --resource-group ${AZURE_RESOURCE_GROUP} --policy @./azure-blob-lifecycle-policy.json
+      - az storage container create --name ${AZURE_CONTAINER_NM} --account-name ${AZURE_STORAGE_ACCOUNT} --public-access off > ~/tmp/azurelogs.md
+      - az storage container create --name ${AZURE_CONTAINER_NM_TWO} --account-name ${AZURE_STORAGE_ACCOUNT} --public-access off > ~/tmp/azurelogs.md
+      - az storage account keys list --account-name ${AZURE_STORAGE_ACCOUNT} --resource-group ${AZURE_RESOURCE_GROUP} --query '[0].value' --output tsv > azure-storage-account-keys.txt
+      - az storage blob upload-batch --destination ${AZURE_CONTAINER_NM_TWO} --source ./01-terraform/02-environments/01-DEV --account-name ${AZURE_STORAGE_ACCOUNT}  --pattern "*.tfstate" --account-key $(cat azure-storage-account-keys.txt) --auth-mode key                    
+      - az storage blob upload-batch --destination ${AZURE_CONTAINER_NM_TWO} --source ./01-terraform/02-environments/01-DEV --account-name ${AZURE_STORAGE_ACCOUNT}  --pattern "*.lock.hcl" --account-key $(cat azure-storage-account-keys.txt) --auth-mode key                    
+      - az storage blob upload-batch --destination ${AZURE_CONTAINER_NM} --source ./01-terraform/01-modules/02-Azure --account-name ${AZURE_STORAGE_ACCOUNT}  --account-key $(cat azure-storage-account-keys.txt) --auth-mode key                    
+      
+  Azure:02-delete-terraform-resources:
+    desc: delete terraform resources
+    cmds:
+      - cd ./01-terraform-files-AWS
+      - terraform destroy
+      - cd ..
+
+  Azure:03-delete-azure-resources:
+    desc: delete AWS resources
+    cmds:
+      - az login
+      - az ad sp list --display-name ${AZURE_SVC_NM} > sp.json
+      - az group delete --name ${AZURE_RESOURCE_GROUP} --yes
+      - az ad sp delete --id $(jq -r '.[0].id' sp.json)
+      - rm -f azure-user1-details.json servicePrincipal.json sp.json azure-storage-account-keys.txt
+
+####### GENERATE GCLOUD USER AND SERVICE ACCOUNT #######
+
+  GCLOUD:01-create-GCS-buckets:
+    desc: Create a user to make changes in cloud from local desktop
+    cmds: 
+      - cmd: |
+          gum style "$(cat <<EOF
+          1. Authorization Login 🔐
+            - Opens a browser to authenticate your Google account. This allows the CLI to make authenticated 
+              requests on your behalf.
+          2. Set Default Project 🎯
+            - This sets the project where all your following actions will take place
+          3. Create a Service Account & Grant Access 👤🔑
+            - This lets your user act as the service account when needed — super useful for automation and scoped access
+          4. Grant Storage Admin Role to Service Account 🗂️🔐
+            - This gives the service account full control over Cloud Storage (GCS) 
+          5. Create Two GCS Buckets with Versioning & Lifecycle Policy 🪣🕓
+          6. Copy Files from Local Directory to GCS 📁🚀
+
+          🚨🚨🚨 NOTE: Exposing such credentials or store them in any control version system platform is extremly risky and can lead to potential 
+          monetary charges in your cloud platform due to the credentials being used for any kind of tasks in your subscripcion.
+          (Make sure you run the task AWS:delete to delete all the resources in this lesson after you finish using it.) 🚨🚨🚨
+          EOF
+          )"
+        silent: true
+      - gcloud auth login
+      - gcloud config set project ${GCLOUD_PROJECT_ID} >> ~/tmp/gcloudlogs.md
+      - gcloud iam service-accounts create "${GCLOUD_SVC_ACCOUNT}" --display-name="${GCLOUD_SVC_ACCOUNT}" --description="${GCLOUD_SVC_ACCOUNT_DESC} in ${GCLOUD_PROJECT_ID}" --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - gcloud iam service-accounts add-iam-policy-binding ${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --role=roles/iam.serviceAccountTokenCreator --member="user:${GCP_VIEWER_USER}" --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - sleep 60
+      - gcloud projects add-iam-policy-binding ${GCLOUD_PROJECT_ID} --member=serviceAccount:${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --role=roles/storage.admin --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - gcloud iam service-accounts keys create ${GCLOUD_SVC_ACCOUNT_KEY} --iam-account=${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - sleep 60
+      - gcloud storage buckets create gs://${GCLOUD_GCS_BUCKET_NM} gs://${GCLOUD_GCS_BUCKET_NM_TWO} --location=${GCLOUD_GCS_BUCKET_REGION} --public-access-prevention --impersonate-service-account=${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - gcloud storage buckets update gs://${GCLOUD_GCS_BUCKET_NM} --public-access-prevention --impersonate-service-account=${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - gcloud storage buckets update gs://${GCLOUD_GCS_BUCKET_NM} --versioning --impersonate-service-account=${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - gcloud storage buckets update gs://${GCLOUD_GCS_BUCKET_NM} --lifecycle-file=gcp-bucket-policy.json --impersonate-service-account=${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - find . \( -name "*.tfstate" -o -name "*.lock.hcl" \) -exec gcloud storage cp {} gs://${GCLOUD_GCS_BUCKET_NM} --impersonate-service-account=cloudchaps-svc-storageAdmin@devopspracticeproject.iam.gserviceaccount.com \;
+      - gcloud storage cp -R ./01-terraform/01-modules/03-GCP gs://${GCLOUD_GCS_BUCKET_NM_TWO} --impersonate-service-account=${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+
+  GCLOUD:02-run-terrafom-apply:
+    desc: Run terraform apply
+    cmds:
+      - cd ./01-terraform-files-AWS
+      - terraform apply
+      - cd ..
+
+  GCLOUD:03-delete-GCP-resources:
+    desc: delete GCP Cloud resources
+    cmds:
+      - gcloud storage rm -r gs://${GCLOUD_GCS_BUCKET_NM} gs://${GCLOUD_GCS_BUCKET_NM_TWO} --impersonate-service-account=${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com >> ~/tmp/gcloudlogs.md
+      - gcloud iam service-accounts delete ${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com --impersonate-service-account=${GCLOUD_SVC_ADMIN}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - rm -f gcloudlogs.md ${GCLOUD_SVC_ACCOUNT_KEY}
+
+####### Create all AWS, AZURE and GCP resources #######
+  ALL:01-create-all-resources:
+    desc: Create all resources in AWS, AZURE and GCP
+    cmds:
+      - task: AWS:01-create-S3-bucket
+      - task: Azure:01-create-Azure-blob-storage
+      - task: GCLOUD:01-create-GCS-buckets
+
+####### Delete all AWS, AZURE and GCP resources #######
+  ALL:02-delete-all-resources:
+    desc: Delete all resources in AWS, AZURE and GCP
+    cmds:
+      - task: AWS:03-delete-S3-resources
+      - task: Azure:03-delete-azure-resources
+      - task: GCLOUD:03-delete-GCP-resources
+
+####### Pull modules and backup previous versions from Storage #######
+  BACKUPS:01-Backup-local-modules:
+    desc: Backup local modules and copy them to cloud storage, then pull new versions from cloud to local
+    cmds: 
+      - cmd: |
+          gum style "$(cat <<EOF
+          pre-requisites:
+          1. Run all previous tasks in this lesson to create the resources in cloud before running this task 📋
+          2. Do not run delete tasks in previous lessons, it will delete the resources needed in this task 🚨
+          ----
+          1. Authorization Login 🔐
+            - Opens a browser to authenticate your Google account. This allows the CLI to make authenticated 
+              requests on your behalf.
+          2. Set Default Project 🎯
+            - This sets the project where all your following actions will take place
+          3. Create a Service Account & Grant Access 👤🔑
+            - This lets your user act as the service account when needed — super useful for automation and scoped access
+          4. Grant Storage Admin Role to Service Account 🗂️🔐
+            - This gives the service account full control over Cloud Storage (GCS) 
+          5. Create Two GCS Buckets with Versioning & Lifecycle Policy 🪣🕓
+          6. Copy Files from Local Directory to GCS 📁🚀
+
+          🚨🚨🚨 NOTE: Exposing such credentials or store them in any control version system platform is extremly risky and can lead to potential 
+          monetary charges in your cloud platform due to the credentials being used for any kind of tasks in your subscripcion.
+          (Make sure you run the task AWS:delete to delete all the resources in this lesson after you finish using it.) 🚨🚨🚨
+          EOF
+          )"
+        silent: true
+      - tar -cf aws_archive_$(date +%Y%m%d_%H%M).tar ~/cloudchaps/02-SimpleStorageServices/01-terraform/01-modules/01-AWS
+      - tar -cf azure_archive_$(date +%Y%m%d_%H%M).tar ~/cloudchaps/02-SimpleStorageServices/01-terraform/01-modules/02-Azure
+      - tar -cf gcp_archive_$(date +%Y%m%d_%H%M).tar ~/cloudchaps/02-SimpleStorageServices/01-terraform/01-modules/03-GCP
+      - aws s3 cp ./aws_archive_$(date +%Y%m%d_%H%M).tar s3://${AWS_S3_GENERAL_BUCKET_NM}/02-archive/aws_archive_$(date +%Y%m%d_%H%M).tar
+      - az storage blob upload --container-name ${AZURE_CONTAINER_NM} --file ./azure_archive_$(date +%Y%m%d_%H%M).tar --name 02-archive/azure_archive_$(date +%Y%m%d_%H%M).tar --account-name ${AZURE_STORAGE_ACCOUNT} --account-key $(cat azure-storage-account-keys.txt) --auth-mode key
+      - gcloud storage cp ./gcp_archive_$(date +%Y%m%d_%H%M).tar gs://${GCLOUD_GCS_BUCKET_NM_TWO}/02-archive --impersonate-service-account=${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - rm -rf ~/cloudchaps/02-SimpleStorageServices/01-terraform/01-modules/01-AWS/*
+      - rm -rf ~/cloudchaps/02-SimpleStorageServices/01-terraform/01-modules/02-Azure/01-data/*
+      - rm -rf ~/cloudchaps/02-SimpleStorageServices/01-terraform/01-modules/03-GCP/01-data/*
+      - aws s3 cp s3://${AWS_S3_GENERAL_BUCKET_NM}/01-AWS ~/cloudchaps/02-SimpleStorageServices/01-terraform/01-modules/01-AWS --recursive
+      - az storage blob download-batch --source ${AZURE_CONTAINER_NM} --destination ~/cloudchaps/02-SimpleStorageServices/01-terraform/01-modules/02-Azure --pattern "01-data/*" --account-name ${AZURE_STORAGE_ACCOUNT} --account-key $(cat azure-storage-account-keys.txt) --auth-mode key
+      - gcloud storage cp -R gs://${GCLOUD_GCS_BUCKET_NM_TWO}/03-GCP/01-data ~/cloudchaps/02-SimpleStorageServices/01-terraform/01-modules/03-GCP --impersonate-service-account=${GCLOUD_SVC_ACCOUNT}@${GCLOUD_PROJECT_ID}.iam.gserviceaccount.com
+      - rm -f ./*.tar
+      

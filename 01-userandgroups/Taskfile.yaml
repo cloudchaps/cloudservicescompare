@@ -220,7 +220,15 @@ tasks:
       - gcloud auth list
 
 ####### DELETE ALL RESOURCES GENERATED IN THIS LECTURE #######
-  ALL:01-delete-all-resources:
+  ALL:01-create-all-resources:
+    desc: Create all resources in AWS, AZURE and GCP
+    cmds:
+      - task: AWS:01-create-AWS-user
+      - task: Azure:01-create-Azure-user
+      - task: GCLOUD:01-create-Gcloud-user
+
+####### DELETE ALL RESOURCES GENERATED IN THIS LECTURE #######
+  ALL:02-delete-all-resources:
     desc: Delete all resources in AWS, AZURE and GCP
     cmds:
       - task: AWS:03-delete-S3-resources

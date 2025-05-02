@@ -31,7 +31,7 @@ resource "azurerm_storage_account" "azure_cloudchaps_storageaccounts" {
 
   # Security settings
   min_tls_version           = "TLS1_2"
-  enable_https_traffic_only = true
+#  enable_https_traffic_only = true
 
   blob_properties {
     versioning_enabled = true
